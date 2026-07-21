@@ -9,17 +9,29 @@ type Props = {
   onStrokeComplete: (stroke: Stroke) => void;
 };
 
-function drawStroke(
+type DrawableStroke = Pick<Stroke, "color" | "points">;
+
+export function drawStroke(
   ctx: CanvasRenderingContext2D,
-  stroke: Stroke,
+  stroke: DrawableStroke,
   w: number,
   h: number,
 ) {
   if (stroke.points.length === 0) return;
   ctx.strokeStyle = stroke.color;
+  ctx.fillStyle = stroke.color;
   ctx.lineWidth = 2.5;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0]!;
+    ctx.beginPath();
+    ctx.arc(point.x * w, point.y * h, 1.25, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
   ctx.beginPath();
   stroke.points.forEach((p, i) => {
     const x = p.x * w;
@@ -30,9 +42,35 @@ function drawStroke(
   ctx.stroke();
 }
 
+export function paintStrokes(
+  ctx: CanvasRenderingContext2D,
+  strokes: DrawableStroke[],
+  activeStroke: DrawableStroke | null,
+  w: number,
+  h: number,
+) {
+  for (const stroke of strokes) drawStroke(ctx, stroke, w, h);
+  if (activeStroke) drawStroke(ctx, activeStroke, w, h);
+}
+
+export function normalizePoint(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, "left" | "top" | "width" | "height">,
+): Point {
+  const clamp = (value: number) =>
+    Number.isNaN(value) ? 0 : Math.min(1, Math.max(0, value));
+
+  return {
+    x: clamp((clientX - rect.left) / rect.width),
+    y: clamp((clientY - rect.top) / rect.height),
+  };
+}
+
 export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef<Point[] | null>(null);
+  const drawingColor = useRef<InkColor | null>(null);
   const colorRef = useRef(color);
 
   useEffect(() => {
@@ -57,7 +95,17 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, rect.width, rect.height);
-      for (const s of strokes) drawStroke(ctx, s, rect.width, rect.height);
+      const activePoints = drawing.current;
+      const activeColor = drawingColor.current;
+      paintStrokes(
+        ctx,
+        strokes,
+        activePoints && activeColor
+          ? { color: activeColor, points: activePoints }
+          : null,
+        rect.width,
+        rect.height,
+      );
     };
 
     paint();
@@ -69,10 +117,7 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
   function toNorm(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height,
-    };
+    return normalizePoint(e.clientX, e.clientY, rect);
   }
 
   return (
@@ -82,6 +127,7 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         drawing.current = [toNorm(e)];
+        drawingColor.current = colorRef.current;
       }}
       onPointerMove={(e) => {
         if (!drawing.current) return;
@@ -95,7 +141,7 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
         if (pts.length < 2) return;
         const a = pts[pts.length - 2]!;
         const b = pts[pts.length - 1]!;
-        ctx.strokeStyle = colorRef.current;
+        ctx.strokeStyle = drawingColor.current ?? colorRef.current;
         ctx.lineWidth = 2.5;
         ctx.lineCap = "round";
         ctx.beginPath();
@@ -105,17 +151,20 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
       }}
       onPointerUp={() => {
         const points = drawing.current;
+        const strokeColor = drawingColor.current;
         drawing.current = null;
+        drawingColor.current = null;
         if (!points || points.length === 0) return;
         onStrokeComplete({
           id: crypto.randomUUID(),
-          color: colorRef.current,
+          color: strokeColor ?? colorRef.current,
           points,
           createdAt: Date.now(),
         });
       }}
       onPointerCancel={() => {
         drawing.current = null;
+        drawingColor.current = null;
       }}
     />
   );

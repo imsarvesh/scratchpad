@@ -14,6 +14,13 @@ function channel(roomId: string) {
   return `pad:${roomId}`;
 }
 
+export async function clearStoredStrokes(
+  redis: { del(key: string): Promise<unknown> },
+  roomId: string,
+): Promise<void> {
+  await redis.del(strokesKey(roomId));
+}
+
 export function createPadStore(redisUrl: string) {
   const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
   const sub = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
@@ -55,8 +62,7 @@ export function createPadStore(redisUrl: string) {
     async clearStrokes(roomId: string): Promise<void> {
       try {
         await ensure();
-        await redis.del(strokesKey(roomId));
-        await redis.publish(channel(roomId), JSON.stringify({ type: "clear" }));
+        await clearStoredStrokes(redis, roomId);
       } catch {
         healthy = false;
       }

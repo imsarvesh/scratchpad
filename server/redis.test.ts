@@ -1,6 +1,6 @@
 import Redis from "ioredis";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { createPadStore } from "./redis";
+import { clearStoredStrokes, createPadStore } from "./redis";
 import { INK_COLORS } from "../shared/protocol";
 
 const url = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
@@ -22,6 +22,22 @@ async function isRedisAvailable(redisUrl: string): Promise<boolean> {
 }
 
 const redisAvailable = await isRedisAvailable(url);
+
+describe("clearStoredStrokes", () => {
+  it("only deletes the room's stroke key", async () => {
+    const deletedKeys: string[] = [];
+    const redis = {
+      async del(key: string) {
+        deletedKeys.push(key);
+        return 1;
+      },
+    };
+
+    await clearStoredStrokes(redis, "room-1");
+
+    expect(deletedKeys).toEqual(["pad:room-1:strokes"]);
+  });
+});
 
 describe.skipIf(!redisAvailable)("createPadStore", () => {
   const store = createPadStore(url);
@@ -60,5 +76,24 @@ describe.skipIf(!redisAvailable)("createPadStore", () => {
     expect(await store.getStrokes(roomId)).toHaveLength(1);
     await store.clearStrokes(roomId);
     expect(await store.getStrokes(roomId)).toEqual([]);
+  });
+
+  it("does not publish when clearing strokes", async () => {
+    const subscriber = new Redis(url);
+    const clearRoomId = "clear-no-publish";
+    let messages = 0;
+    subscriber.on("message", () => {
+      messages += 1;
+    });
+    try {
+      await subscriber.subscribe(`pad:${clearRoomId}`);
+
+      await store.clearStrokes(clearRoomId);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(messages).toBe(0);
+    } finally {
+      await subscriber.quit();
+    }
   });
 });
