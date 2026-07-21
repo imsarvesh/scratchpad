@@ -34,7 +34,10 @@ export function CanvasBoard({ color, strokes, onStrokeComplete }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef<Point[] | null>(null);
   const colorRef = useRef(color);
-  colorRef.current = color;
+
+  useEffect(() => {
+    colorRef.current = color;
+  }, [color]);
 
   // Resize + redraw strokes whenever strokes change
   useEffect(() => {
