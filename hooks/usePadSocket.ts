@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   serializeMessage,
   type ServerMessage,
@@ -15,11 +15,8 @@ export type PadSocketStatus =
   | "unavailable";
 
 export function usePadSocket(roomId: string) {
-  const wsUrl = useMemo(() => resolveWsUrl(), []);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [status, setStatus] = useState<PadSocketStatus>(() =>
-    wsUrl ? "connecting" : "unavailable",
-  );
+  const [status, setStatus] = useState<PadSocketStatus>("connecting");
   const [redisOk, setRedisOk] = useState(true);
   const wsRef = useRef<WebSocket | null>(null);
   const backoffRef = useRef(1000);
@@ -42,9 +39,13 @@ export function usePadSocket(roomId: string) {
   }, [roomId]);
 
   useEffect(() => {
+    // Resolve only after mount so we use the real page hostname (not SSR "localhost").
+    const wsUrl = resolveWsUrl();
     if (!wsUrl) {
+      // Defer status update to avoid sync setState-in-effect lint; microtask is fine.
+      queueMicrotask(() => setStatus("unavailable"));
       console.error(
-        "[scratchpad] NEXT_PUBLIC_WS_URL is missing or still points at localhost. Deploy the WebSocket server and set NEXT_PUBLIC_WS_URL to its wss:// URL in Vercel.",
+        "[scratchpad] NEXT_PUBLIC_WS_URL is missing or still points at localhost. Set it to your deployed wss:// URL in Vercel and redeploy.",
       );
       return;
     }
@@ -92,13 +93,14 @@ export function usePadSocket(roomId: string) {
       };
     }
 
+    console.info("[scratchpad] connecting WebSocket →", wsUrl);
     connect();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
       wsRef.current?.close();
     };
-  }, [roomId, wsUrl]);
+  }, [roomId]);
 
   return { strokes, status, redisOk, sendStroke, clear };
 }
