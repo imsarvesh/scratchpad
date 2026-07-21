@@ -1,6 +1,7 @@
 "use client";
 
 import { INK_COLORS, type InkColor } from "@shared/protocol";
+import type { PadSocketStatus } from "@/hooks/usePadSocket";
 
 type ColorToolbarProps = {
   color: InkColor;
@@ -8,13 +9,14 @@ type ColorToolbarProps = {
   onClear: () => void;
   onCopyLink: () => void;
   redisOk: boolean;
-  status: "connecting" | "open" | "closed";
+  status: PadSocketStatus;
 };
 
-const STATUS_LABELS: Record<ColorToolbarProps["status"], string> = {
+const STATUS_LABELS: Record<PadSocketStatus, string> = {
   connecting: "Connecting",
   open: "Live",
   closed: "Reconnecting",
+  unavailable: "No server",
 };
 
 export function ColorToolbar({

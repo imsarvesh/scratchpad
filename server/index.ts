@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createPadStore } from "./redis";
@@ -38,12 +39,23 @@ function loadEnvFiles() {
 
 loadEnvFiles();
 
-const port = Number(process.env.WS_PORT ?? 3001);
+const port = Number(process.env.PORT ?? process.env.WS_PORT ?? 3001);
 const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
 
 const store = createPadStore(redisUrl);
 const rooms = createRoomRegistry();
-const wss = new WebSocketServer({ port });
+
+const server = createServer((req, res) => {
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end(store.isHealthy() ? "ok redis" : "ok memory");
+    return;
+  }
+  res.writeHead(404);
+  res.end("not found");
+});
+
+const wss = new WebSocketServer({ server });
 
 store.getStrokes("__healthcheck__").then(() => {
   console.log(
@@ -111,4 +123,6 @@ wss.on("connection", (socket) => {
   });
 });
 
-console.log(`Scratchpad WS listening on :${port}`);
+server.listen(port, "0.0.0.0", () => {
+  console.log(`Scratchpad WS listening on :${port}`);
+});
