@@ -1,4 +1,31 @@
 /**
+ * Normalize env values that were pasted with a leading `=` or as KEY=value.
+ */
+export function sanitizeWsUrlInput(raw: string): string {
+  let value = raw.trim();
+  // Strip wrapping quotes
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  // Common Vercel mistake: value set to `=wss://...` or full `KEY=wss://...`
+  if (value.startsWith("=")) {
+    value = value.slice(1).trim();
+  }
+  const keyEq = value.match(/^[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.+)$/);
+  if (keyEq?.[1]) {
+    value = keyEq[1].trim();
+  }
+  return value;
+}
+
+function isAbsoluteWsUrl(url: string): boolean {
+  return /^wss?:\/\//i.test(url);
+}
+
+/**
  * Resolve the WebSocket URL for the pad client.
  * Call only in the browser (needs `window.location`).
  * Returns null when production is misconfigured (e.g. still pointing at localhost on Vercel).
@@ -24,12 +51,19 @@ export function resolveWsUrl(
     host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 
   const fallbackLocal = "ws://localhost:3001";
-  const raw = (configured ?? "").trim() || (isLocalHost ? fallbackLocal : "");
+  const raw =
+    sanitizeWsUrlInput(configured ?? "") ||
+    (isLocalHost ? fallbackLocal : "");
 
   if (!raw) return null;
 
+  // Relative / malformed values become paths like /pad/=wss://... — reject them.
+  if (!isAbsoluteWsUrl(raw)) {
+    return null;
+  }
+
   const isLoopbackTarget =
-    /^(wss?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(raw);
+    /^wss?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(raw);
 
   let url = raw;
   if (
