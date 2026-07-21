@@ -41,7 +41,7 @@ export function usePadSocket(roomId: string) {
   useEffect(() => {
     // Resolve only after mount so we use the real page hostname (not SSR "localhost").
     const wsUrl = resolveWsUrl();
-    if (!wsUrl) {
+    if (wsUrl == null) {
       // Defer status update to avoid sync setState-in-effect lint; microtask is fine.
       queueMicrotask(() => setStatus("unavailable"));
       console.error(
@@ -49,6 +49,7 @@ export function usePadSocket(roomId: string) {
       );
       return;
     }
+    const endpoint: string = wsUrl;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -56,7 +57,7 @@ export function usePadSocket(roomId: string) {
     function connect() {
       if (cancelled) return;
       setStatus("connecting");
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(endpoint);
       wsRef.current = ws;
 
       ws.onopen = () => {
