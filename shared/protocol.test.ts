@@ -8,14 +8,16 @@ import {
 } from "./protocol";
 
 describe("isValidRoomId", () => {
-  it("accepts 10-char URL-safe ids", () => {
-    expect(isValidRoomId("abcdefghij")).toBe(true);
-    expect(isValidRoomId("Ab_12-XyZ9")).toBe(true);
+  it("accepts simple numeric room names", () => {
+    expect(isValidRoomId("101")).toBe(true);
+    expect(isValidRoomId("102")).toBe(true);
+    expect(isValidRoomId("999999")).toBe(true);
   });
-  it("rejects bad lengths or chars", () => {
-    expect(isValidRoomId("short")).toBe(false);
-    expect(isValidRoomId("abcdefghijk")).toBe(false);
-    expect(isValidRoomId("bad id!!!!")).toBe(false);
+  it("rejects non-numeric or wrong-length ids", () => {
+    expect(isValidRoomId("99")).toBe(false);
+    expect(isValidRoomId("1000000")).toBe(false);
+    expect(isValidRoomId("abcdefghij")).toBe(false);
+    expect(isValidRoomId("10a")).toBe(false);
   });
 });
 
@@ -80,9 +82,9 @@ describe("normalizeStroke", () => {
 
 describe("parseClientMessage", () => {
   it("parses join", () => {
-    expect(parseClientMessage(JSON.stringify({ type: "join", roomId: "abcdefghij" }))).toEqual({
+    expect(parseClientMessage(JSON.stringify({ type: "join", roomId: "101" }))).toEqual({
       type: "join",
-      roomId: "abcdefghij",
+      roomId: "101",
     });
   });
   it("returns null for garbage", () => {

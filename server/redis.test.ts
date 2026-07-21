@@ -41,7 +41,7 @@ describe("clearStoredStrokes", () => {
 
 describe.skipIf(!redisAvailable)("createPadStore", () => {
   const store = createPadStore(url);
-  const roomId = "testroom01";
+  const roomId = "101";
 
   beforeAll(async () => {
     await store.clearStrokes(roomId);
@@ -66,6 +66,7 @@ describe.skipIf(!redisAvailable)("createPadStore", () => {
   });
 
   it("clears strokes", async () => {
+    await store.clearStrokes(roomId);
     const stroke = {
       id: "stroke-clear",
       color: INK_COLORS[0],

@@ -14,6 +14,11 @@ function channel(roomId: string) {
   return `pad:${roomId}`;
 }
 
+function trimMemory(list: Stroke[]): Stroke[] {
+  if (list.length <= MAX_STROKES_PER_ROOM) return list;
+  return list.slice(-MAX_STROKES_PER_ROOM);
+}
+
 export async function clearStoredStrokes(
   redis: { del(key: string): Promise<unknown> },
   roomId: string,
@@ -22,15 +27,44 @@ export async function clearStoredStrokes(
 }
 
 export function createPadStore(redisUrl: string) {
-  const redis = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
-  const sub = new Redis(redisUrl, { maxRetriesPerRequest: 1, lazyConnect: true });
+  const redis = new Redis(redisUrl, {
+    maxRetriesPerRequest: 1,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+  });
+  const sub = new Redis(redisUrl, {
+    maxRetriesPerRequest: 1,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+  });
   let healthy = false;
+  const memory = new Map<string, Stroke[]>();
+
+  redis.on("error", () => {
+    healthy = false;
+  });
+  sub.on("error", () => {
+    healthy = false;
+  });
 
   async function ensure() {
+    if (redis.status === "end" || redis.status === "close") {
+      redis.connect().catch(() => undefined);
+    }
+    if (sub.status === "end" || sub.status === "close") {
+      sub.connect().catch(() => undefined);
+    }
     if (redis.status === "wait") await redis.connect();
     if (sub.status === "wait") await sub.connect();
     await redis.ping();
+    if (!healthy) {
+      console.log("[redis] connected");
+    }
     healthy = true;
+  }
+
+  function remember(roomId: string, strokes: Stroke[]) {
+    memory.set(roomId, trimMemory(strokes));
   }
 
   return {
@@ -39,13 +73,23 @@ export function createPadStore(redisUrl: string) {
       try {
         await ensure();
         const raw = await redis.lrange(strokesKey(roomId), 0, -1);
-        return raw.map((s) => JSON.parse(s) as Stroke);
-      } catch {
+        const strokes = raw.map((s) => JSON.parse(s) as Stroke);
+        remember(roomId, strokes);
+        return strokes;
+      } catch (err) {
         healthy = false;
-        return [];
+        console.warn(
+          "[redis] getStrokes failed — using memory:",
+          err instanceof Error ? err.message : err,
+        );
+        return memory.get(roomId) ?? [];
       }
     },
     async appendStroke(roomId: string, stroke: Stroke): Promise<void> {
+      const local = memory.get(roomId) ?? [];
+      local.push(stroke);
+      remember(roomId, local);
+
       try {
         await ensure();
         const key = strokesKey(roomId);
@@ -55,16 +99,25 @@ export function createPadStore(redisUrl: string) {
           .ltrim(key, -MAX_STROKES_PER_ROOM, -1)
           .expire(key, ROOM_TTL_SECONDS)
           .exec();
-      } catch {
+      } catch (err) {
         healthy = false;
+        console.warn(
+          "[redis] appendStroke failed — kept in memory:",
+          err instanceof Error ? err.message : err,
+        );
       }
     },
     async clearStrokes(roomId: string): Promise<void> {
+      memory.delete(roomId);
       try {
         await ensure();
         await clearStoredStrokes(redis, roomId);
-      } catch {
+      } catch (err) {
         healthy = false;
+        console.warn(
+          "[redis] clearStrokes failed:",
+          err instanceof Error ? err.message : err,
+        );
       }
     },
     async publish(roomId: string, message: ServerMessage): Promise<void> {
@@ -97,8 +150,8 @@ export function createPadStore(redisUrl: string) {
       };
     },
     async quit() {
-      await redis.quit();
-      await sub.quit();
+      await redis.quit().catch(() => undefined);
+      await sub.quit().catch(() => undefined);
     },
   };
 }

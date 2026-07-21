@@ -37,8 +37,14 @@ export function isInkColor(c: string): c is InkColor {
   return (INK_COLORS as readonly string[]).includes(c);
 }
 
+/** Simple numeric room names: 101, 102, … (3–6 digits). */
 export function isValidRoomId(id: string): boolean {
-  return /^[A-Za-z0-9_-]{10}$/.test(id);
+  return /^\d{3,6}$/.test(id);
+}
+
+/** Fallback when Redis allocator is unavailable: random 101–999. */
+export function createFallbackRoomId(): string {
+  return String(101 + Math.floor(Math.random() * 899));
 }
 
 function clamp01(n: number): number {

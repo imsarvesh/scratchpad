@@ -6,6 +6,7 @@
     "dev": "concurrently -n next,ws -c cyan,magenta \"next dev\" \"tsx watch server/index.ts\"",
     "dev:next": "next dev",
     "dev:ws": "tsx watch server/index.ts",
+    "redis": "docker compose up -d",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
